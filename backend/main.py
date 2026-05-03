@@ -24,13 +24,19 @@ from assessment import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Allow common local Next.js ports; override with CORS_ORIGINS if needed.
+# Local dev origins — always allowed.
 DEFAULT_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
 ]
+
+# Production frontends (Vercel previews + prod) — extend DEFAULT_ORIGINS.
+# Set CORS_ORIGINS on Render to your live site(s), comma-separated, e.g.:
+#   https://my-app.vercel.app,https://www.mycompany.com
+# Optional regex (unset with CORS_ORIGIN_REGEX=) matches *.vercel.app by default.
+_DEFAULT_VERCEL_REGEX = r"https://.*\.vercel\.app"
 
 DEFAULT_CALENDLY_URL = "https://calendly.com/beaconone-org/30min"
 
@@ -40,15 +46,22 @@ app = FastAPI(
     version="1.0.0",
 )
 
-_origins = os.getenv("CORS_ORIGINS", "").strip()
-if _origins:
-    allow_origins = [o.strip() for o in _origins.split(",") if o.strip()]
+_extra = os.getenv("CORS_ORIGINS", "").strip()
+_extra_origins = [o.strip() for o in _extra.split(",") if o.strip()]
+allow_origins = list(DEFAULT_ORIGINS) + _extra_origins
+
+_regex_raw = os.getenv("CORS_ORIGIN_REGEX")
+if _regex_raw is None:
+    allow_origin_regex = _DEFAULT_VERCEL_REGEX
+elif _regex_raw.strip() == "":
+    allow_origin_regex = None
 else:
-    allow_origins = DEFAULT_ORIGINS
+    allow_origin_regex = _regex_raw.strip()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
