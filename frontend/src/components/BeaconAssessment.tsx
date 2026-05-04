@@ -6,6 +6,10 @@ import { fetchQuestions, submitAssessment } from "@/lib/api";
 
 type Phase = "intro" | "questions" | "email" | "results";
 
+const BEACON_WEBSITE = "https://beacon-bio.carrd.co";
+const EARLY_ACCESS_WAITLIST_URL =
+  "https://docs.google.com/forms/d/e/1FAIpQLSeKtKgRz6EKmOEewGL5NIbCmDiHrM0T47xekYDzx_1ouLWg7w/viewform";
+
 const SECTION_ORDER = ["Analytical Data", "CMC Documentation", "Regulatory Strategy"] as const;
 
 function groupBySection(questions: Question[]) {
@@ -153,6 +157,16 @@ export default function BeaconAssessment() {
           A concise, IND-focused questionnaire covering analytical data, CMC
           documentation, and regulatory strategy. Estimated time: about two
           minutes.
+        </p>
+        <p className="mt-4 text-sm">
+          <a
+            href={BEACON_WEBSITE}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-[var(--beacon-accent)] underline decoration-[var(--beacon-accent)]/30 underline-offset-4 transition hover:decoration-[var(--beacon-accent)]"
+          >
+            {BEACON_WEBSITE.replace(/^https?:\/\//, "")}
+          </a>
         </p>
       </header>
 
@@ -450,7 +464,7 @@ export default function BeaconAssessment() {
             </h2>
             <p className="mt-2 text-sm text-[var(--beacon-muted)]">
               Book a free 30-minute IND readiness consultation, or join the Beacon
-              early access list when it opens.
+              early access waitlist.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <a
@@ -461,12 +475,14 @@ export default function BeaconAssessment() {
               >
                 Book consultation (Calendly)
               </a>
-              <span
-                className="inline-flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/80 px-5 py-3 text-center text-sm font-semibold tracking-wide text-slate-500"
-                aria-live="polite"
+              <a
+                href={EARLY_ACCESS_WAITLIST_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-3 text-center text-sm font-semibold text-[var(--beacon-ink)] shadow-sm transition hover:bg-slate-50"
               >
-                Beacon early access — Coming soon
-              </span>
+                Join the waitlist (early access)
+              </a>
             </div>
           </section>
 
