@@ -181,8 +181,13 @@ def _send_smtp(
         try:
             sock.login(user, password)
         except smtplib.SMTPAuthenticationError as e:
-            hint = _smtp_auth_hint(host, e)
-            raise RuntimeError(hint) from e
+            raise RuntimeError(_smtp_auth_hint(host, e)) from e
+        except smtplib.SMTPException as e:
+            # Some servers return 535 without raising SMTPAuthenticationError
+            code = getattr(e, "smtp_code", None)
+            if code == 535 or b"5.7.8" in (getattr(e, "smtp_error", b"") or b""):
+                raise RuntimeError(_smtp_auth_hint(host, e)) from e
+            raise
 
     if use_ssl:
         with smtplib.SMTP_SSL(host, port, timeout=45) as server:
@@ -197,7 +202,7 @@ def _send_smtp(
             server.send_message(msg)
 
 
-def _smtp_auth_hint(host: str, err: smtplib.SMTPAuthenticationError) -> str:
+def _smtp_auth_hint(host: str, err: smtplib.SMTPException) -> str:
     base = f"SMTP authentication failed: {err!s}."
     h = host.lower()
     if "brevo" in h or "sendinblue" in h:

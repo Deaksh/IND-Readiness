@@ -9,8 +9,22 @@ from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from config import get_settings
 
+
+def _normalize_database_url(url: str) -> str:
+    """Render uses postgres://…; SQLAlchemy needs an explicit driver (psycopg v3)."""
+    if url.startswith("sqlite"):
+        return url
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgres://")
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgresql://")
+    return url
+
+
 settings = get_settings()
-_url = settings["database_url"] or "sqlite:///./submissions.db"
+_url = _normalize_database_url(
+    str(settings["database_url"] or "sqlite:///./submissions.db")
+)
 
 if _url.startswith("sqlite"):
     engine = create_engine(
