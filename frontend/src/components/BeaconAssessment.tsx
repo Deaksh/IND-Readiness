@@ -50,6 +50,11 @@ export default function BeaconAssessment() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<AssessResponse | null>(null);
+  const [resendEmail, setResendEmail] = useState("");
+  const [resendConsent, setResendConsent] = useState(false);
+  const [resendStatus, setResendStatus] = useState<
+    { kind: "idle" | "sending" | "sent" | "error"; message?: string }
+  >({ kind: "idle" });
 
   const sections = useMemo(
     () => (questions ? groupBySection(questions) : []),
@@ -119,6 +124,38 @@ export default function BeaconAssessment() {
     setResult(null);
     setSubmitError(null);
     setLoadError(null);
+    setResendEmail("");
+    setResendConsent(false);
+    setResendStatus({ kind: "idle" });
+  };
+
+  const resendReport = async () => {
+    setResendStatus({ kind: "sending" });
+    try {
+      const res = await submitAssessment(resendEmail.trim() || undefined, answers, {
+        consent: resendConsent,
+        meta: collectSubmissionMeta(),
+      });
+      setResult(res);
+      if (res.email_delivery === "sent") {
+        setResendStatus({
+          kind: "sent",
+          message: "Report sent — please check your inbox.",
+        });
+      } else {
+        setResendStatus({
+          kind: "error",
+          message:
+            res.email_delivery_detail ||
+            "We could not send the report. Please try again later.",
+        });
+      }
+    } catch (e) {
+      setResendStatus({
+        kind: "error",
+        message: e instanceof Error ? e.message : "Could not send report.",
+      });
+    }
   };
 
   return (
@@ -486,6 +523,63 @@ export default function BeaconAssessment() {
                 <li key={s}>{s}</li>
               ))}
             </ol>
+          </section>
+
+          <section className="rounded-2xl border border-[var(--beacon-border)] bg-white/95 p-8 shadow-sm">
+            <h2 className="text-lg font-semibold text-[var(--beacon-ink)]">
+              Email me this report
+            </h2>
+            <p className="mt-2 text-sm text-[var(--beacon-muted)]">
+              Skipped email earlier? No problem — enter your email and we’ll send the same HTML report.
+            </p>
+            <label className="mt-5 block text-sm font-medium text-[var(--beacon-ink)]">
+              Email
+              <input
+                type="email"
+                autoComplete="email"
+                value={resendEmail}
+                onChange={(e) => setResendEmail(e.target.value)}
+                placeholder="you@company.com"
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-inner outline-none ring-0 transition focus:border-[var(--beacon-accent)] focus:ring-2 focus:ring-[var(--beacon-accent)]/20"
+              />
+            </label>
+            <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-[var(--beacon-ink)]">
+              <input
+                type="checkbox"
+                checked={resendConsent}
+                onChange={(e) => setResendConsent(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-slate-300"
+              />
+              <span>
+                I agree to receive this report by email. You can unsubscribe from follow-ups at any time.
+              </span>
+            </label>
+
+            {resendStatus.kind === "error" && resendStatus.message && (
+              <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                {resendStatus.message}
+              </p>
+            )}
+            {resendStatus.kind === "sent" && resendStatus.message && (
+              <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                {resendStatus.message}
+              </p>
+            )}
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={
+                  resendStatus.kind === "sending" ||
+                  !resendEmail.trim() ||
+                  !resendConsent
+                }
+                onClick={resendReport}
+                className="rounded-xl bg-[var(--beacon-accent)] px-5 py-3 text-sm font-semibold text-white shadow-sm transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {resendStatus.kind === "sending" ? "Sending…" : "Send report"}
+              </button>
+            </div>
           </section>
 
           <section className="rounded-2xl border border-dashed border-[var(--beacon-border)] bg-[var(--beacon-canvas)]/60 p-8">
