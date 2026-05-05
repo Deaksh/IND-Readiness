@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { AssessResponse, Question } from "@/lib/api";
 import { fetchQuestions, submitAssessment } from "@/lib/api";
+import { bandTheme } from "@/lib/bandTheme";
 
 type Phase = "intro" | "questions" | "email" | "results";
 
@@ -25,41 +26,16 @@ function groupBySection(questions: Question[]) {
   })).filter((s) => s.questions.length > 0);
 }
 
-function bandStyles(band: AssessResponse["band"]) {
-  switch (band) {
-    case "green":
-      return {
-        ring: "ring-emerald-500/30",
-        bg: "bg-emerald-500/10",
-        text: "text-emerald-800",
-        badge: "bg-emerald-600 text-white",
-        bar: "bg-emerald-500",
-      };
-    case "yellow":
-      return {
-        ring: "ring-amber-400/40",
-        bg: "bg-amber-500/10",
-        text: "text-amber-900",
-        badge: "bg-amber-500 text-white",
-        bar: "bg-amber-500",
-      };
-    case "orange":
-      return {
-        ring: "ring-orange-400/40",
-        bg: "bg-orange-500/10",
-        text: "text-orange-950",
-        badge: "bg-orange-600 text-white",
-        bar: "bg-orange-500",
-      };
-    default:
-      return {
-        ring: "ring-rose-400/40",
-        bg: "bg-rose-500/10",
-        text: "text-rose-950",
-        badge: "bg-rose-600 text-white",
-        bar: "bg-rose-500",
-      };
-  }
+function collectSubmissionMeta(): Record<string, string | undefined> {
+  if (typeof window === "undefined") return {};
+  const params = new URLSearchParams(window.location.search);
+  return {
+    page_url: window.location.href,
+    referrer: document.referrer || undefined,
+    utm_source: params.get("utm_source") || undefined,
+    utm_medium: params.get("utm_medium") || undefined,
+    utm_campaign: params.get("utm_campaign") || undefined,
+  };
 }
 
 export default function BeaconAssessment() {
@@ -69,6 +45,7 @@ export default function BeaconAssessment() {
   const [sectionIdx, setSectionIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [email, setEmail] = useState("");
+  const [emailConsent, setEmailConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [result, setResult] = useState<AssessResponse | null>(null);
@@ -120,10 +97,10 @@ export default function BeaconAssessment() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await submitAssessment(
-        email.trim() || undefined,
-        answers,
-      );
+      const res = await submitAssessment(email.trim() || undefined, answers, {
+        consent: emailConsent,
+        meta: collectSubmissionMeta(),
+      });
       setResult(res);
       setPhase("results");
     } catch (e) {
@@ -139,6 +116,7 @@ export default function BeaconAssessment() {
     setSectionIdx(0);
     setAnswers({});
     setEmail("");
+    setEmailConsent(false);
     setResult(null);
     setSubmitError(null);
     setLoadError(null);
@@ -332,6 +310,19 @@ export default function BeaconAssessment() {
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-inner outline-none ring-0 transition focus:border-[var(--beacon-accent)] focus:ring-2 focus:ring-[var(--beacon-accent)]/20"
             />
           </label>
+          <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-[var(--beacon-ink)]">
+            <input
+              type="checkbox"
+              checked={emailConsent}
+              onChange={(e) => setEmailConsent(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-slate-300"
+            />
+            <span>
+              I agree to receive my personalized IND readiness report and a copy
+              of these results by email. You can unsubscribe from follow-ups at
+              any time.
+            </span>
+          </label>
           {submitError && (
             <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">
               {submitError}
@@ -347,7 +338,7 @@ export default function BeaconAssessment() {
             </button>
             <button
               type="button"
-              disabled={submitting || !email.trim()}
+              disabled={submitting || !email.trim() || !emailConsent}
               onClick={runAssessment}
               className="rounded-xl bg-[var(--beacon-accent)] px-5 py-3 text-sm font-semibold text-white shadow-sm transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -363,7 +354,10 @@ export default function BeaconAssessment() {
                 setSubmitting(true);
                 setSubmitError(null);
                 try {
-                  const res = await submitAssessment(undefined, answers);
+                  const res = await submitAssessment(undefined, answers, {
+                    consent: false,
+                    meta: collectSubmissionMeta(),
+                  });
                   setResult(res);
                   setPhase("results");
                 } catch (e) {
@@ -384,7 +378,7 @@ export default function BeaconAssessment() {
       {phase === "results" && result && (
         <div className="space-y-8">
           <div
-            className={`rounded-2xl border bg-white/95 p-8 shadow-[var(--beacon-shadow)] ring-1 ${bandStyles(result.band).ring}`}
+            className={`rounded-2xl border bg-white/95 p-8 shadow-[var(--beacon-shadow)] ring-1 ${bandTheme(result.band).ring}`}
           >
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -400,17 +394,17 @@ export default function BeaconAssessment() {
                 </p>
               </div>
               <span
-                className={`inline-flex w-fit items-center rounded-full px-4 py-1.5 text-xs font-semibold ${bandStyles(result.band).badge}`}
+                className={`inline-flex w-fit items-center rounded-full px-4 py-1.5 text-xs font-semibold ${bandTheme(result.band).badge}`}
               >
                 {result.band_title}
               </span>
             </div>
-            <p className={`mt-6 text-sm leading-relaxed ${bandStyles(result.band).text}`}>
+            <p className={`mt-6 text-sm leading-relaxed ${bandTheme(result.band).text}`}>
               {result.band_description}
             </p>
             <div className="mt-6 h-3 overflow-hidden rounded-full bg-slate-100">
               <div
-                className={`h-full rounded-full transition-all ${bandStyles(result.band).bar}`}
+                className={`h-full rounded-full transition-all ${bandTheme(result.band).bar}`}
                 style={{ width: `${Math.min(100, result.percentage)}%` }}
               />
             </div>

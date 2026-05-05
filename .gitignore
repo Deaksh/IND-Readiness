@@ -5,6 +5,8 @@
 backend/.venv/
 backend/__pycache__/
 backend/**/*.pyc
+backend/submissions.db
+*.db
 
 # Frontend
 frontend/node_modules/

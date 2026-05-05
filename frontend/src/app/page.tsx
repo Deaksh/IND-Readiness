@@ -1,8 +1,10 @@
+import AdminPanel from "@/components/AdminPanel";
 import BeaconAssessment from "@/components/BeaconAssessment";
 
 export default function Home() {
   return (
     <div className="min-h-full flex flex-col">
+      <AdminPanel />
       <main className="flex-1">
         <BeaconAssessment />
       </main>

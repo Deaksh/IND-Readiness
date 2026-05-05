@@ -2,25 +2,29 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import uuid
+from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
 
-from assessment import (
-    MAX_POINTS,
-    QUESTIONS,
-    band_copy,
-    band_from_percentage,
-    compute_percentage,
-    derive_gaps,
-    points_for_answer,
-    recommended_steps,
-)
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
+from admin_api import router as admin_router
+from assessment import QUESTIONS
+from assessment_core import build_assessment_report, label_answers
+from db import Base, engine
+from email_send import send_assessment_report_email
+from models_db import Submission  # noqa: F401
+from report_html import build_report_html
+from risk_snapshot import compute_risk_snapshot
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -31,19 +35,20 @@ DEFAULT_ORIGINS = [
     "http://localhost:3001",
     "http://127.0.0.1:3001",
 ]
-
-# Production frontends (Vercel previews + prod) — extend DEFAULT_ORIGINS.
-# Set CORS_ORIGINS on Render to your live site(s), comma-separated, e.g.:
-#   https://my-app.vercel.app,https://www.mycompany.com
-# Optional regex (unset with CORS_ORIGIN_REGEX=) matches *.vercel.app by default.
 _DEFAULT_VERCEL_REGEX = r"https://.*\.vercel\.app"
 
-DEFAULT_CALENDLY_URL = "https://calendly.com/beaconone-org/30min"
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
 
 app = FastAPI(
     title="Beacon IND Readiness Assessment",
     description="Self-assessment API for IND filing readiness (lead magnet).",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 _extra = os.getenv("CORS_ORIGINS", "").strip()
@@ -67,6 +72,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(admin_router)
+
 
 class QuestionOut(BaseModel):
     id: str
@@ -79,6 +86,8 @@ class QuestionOut(BaseModel):
 class AssessmentRequest(BaseModel):
     email: EmailStr | None = None
     answers: dict[str, str] = Field(default_factory=dict)
+    consent: bool = False
+    meta: dict[str, Any] | None = None
 
 
 class CriticalGap(BaseModel):
@@ -96,6 +105,53 @@ class AssessmentResponse(BaseModel):
     critical_gaps: list[CriticalGap]
     recommended_steps: list[str]
     calendly_url: str
+    submission_id: str | None = None
+
+
+def _validate_answers(body: AssessmentRequest) -> None:
+    required_ids = {q.id for q in QUESTIONS}
+    missing = required_ids - set(body.answers.keys())
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing answers for: {', '.join(sorted(missing))}",
+        )
+    extra = set(body.answers.keys()) - required_ids
+    if extra:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown question ids: {', '.join(sorted(extra))}",
+        )
+    for q in QUESTIONS:
+        allowed = {o.id for o in q.options}
+        val = body.answers[q.id]
+        if val not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid option for {q.id}: {val}",
+            )
+
+
+def _persist_submission(
+    db: Any,
+    email: str | None,
+    consent: bool,
+    answers: dict[str, str],
+    report: dict[str, Any],
+    meta: dict[str, Any] | None,
+) -> str:
+    sid = str(uuid.uuid4())
+    sub = Submission(
+        id=sid,
+        email=email,
+        consent=consent,
+        answers_json=json.dumps(answers),
+        report_json=json.dumps(report),
+        meta_json=json.dumps(meta) if meta else None,
+    )
+    db.add(sub)
+    db.commit()
+    return sid
 
 
 @app.get("/health")
@@ -121,50 +177,57 @@ def list_questions() -> list[QuestionOut]:
 
 @app.post("/api/assess", response_model=AssessmentResponse)
 def assess(body: AssessmentRequest) -> AssessmentResponse:
-    required_ids = {q.id for q in QUESTIONS}
-    missing = required_ids - set(body.answers.keys())
-    if missing:
+    _validate_answers(body)
+
+    if body.email and not body.consent:
         raise HTTPException(
             status_code=400,
-            detail=f"Missing answers for: {', '.join(sorted(missing))}",
+            detail="Consent is required to receive your report by email.",
         )
 
-    extra = set(body.answers.keys()) - required_ids
-    if extra:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown question ids: {', '.join(sorted(extra))}",
-        )
+    report = build_assessment_report(body.answers)
+    gaps = [CriticalGap(**g) for g in report["critical_gaps"]]
 
-    for q in QUESTIONS:
-        allowed = {o.id for o in q.options}
-        val = body.answers[q.id]
-        if val not in allowed:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid option for {q.id}: {val}",
+    from db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        sid = _persist_submission(
+            db,
+            str(body.email) if body.email else None,
+            body.consent,
+            body.answers,
+            report,
+            body.meta,
+        )
+    finally:
+        db.close()
+
+    if body.email and body.consent:
+        if body.email:
+            logger.info("Assessment submission email=%s id=%s", body.email, sid)
+        labeled = label_answers(body.answers)
+        risk = compute_risk_snapshot(body.answers, report)
+        html_body = build_report_html(labeled, report, risk)
+        pct = report["percentage"]
+        try:
+            send_assessment_report_email(
+                str(body.email),
+                f"Your IND readiness report — {pct:.0f}%",
+                html_body,
             )
-
-    if body.email:
-        logger.info("Assessment submission email=%s", body.email)
-
-    weighted = sum(
-        points_for_answer(qid, body.answers[qid]) for qid in required_ids
-    )
-    pct = compute_percentage(body.answers)
-    band = band_from_percentage(pct)
-    title, desc = band_copy(band)
-    gaps_raw = derive_gaps(body.answers)
-    gaps = [CriticalGap(**g) for g in gaps_raw]
+        except Exception as e:
+            logger.exception("Failed to send report email: %s", e)
 
     return AssessmentResponse(
-        percentage=pct,
-        band=band,
-        band_title=title,
-        band_description=desc,
-        weighted_points=round(weighted, 2),
-        max_points=MAX_POINTS,
+        percentage=report["percentage"],
+        band=report["band"],
+        band_title=report["band_title"],
+        band_description=report["band_description"],
+        weighted_points=report["weighted_points"],
+        max_points=report["max_points"],
         critical_gaps=gaps,
-        recommended_steps=recommended_steps(gaps_raw),
-        calendly_url=os.getenv("CALENDLY_URL") or DEFAULT_CALENDLY_URL,
+        recommended_steps=report["recommended_steps"],
+        calendly_url=report["calendly_url"],
+        submission_id=sid,
     )
