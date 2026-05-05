@@ -2,8 +2,9 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { AssessResponse, Question } from "@/lib/api";
-import { fetchQuestions, submitAssessment } from "@/lib/api";
+import { submitAssessment } from "@/lib/api";
 import { bandTheme } from "@/lib/bandTheme";
+import { QUESTION_BANK } from "@/lib/questionBank";
 
 type Phase = "intro" | "questions" | "email" | "results";
 
@@ -40,7 +41,7 @@ function collectSubmissionMeta(): Record<string, string | undefined> {
 
 export default function BeaconAssessment() {
   const [phase, setPhase] = useState<Phase>("intro");
-  const [questions, setQuestions] = useState<Question[] | null>(null);
+  const [questions, setQuestions] = useState<Question[] | null>(QUESTION_BANK);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sectionIdx, setSectionIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -64,8 +65,6 @@ export default function BeaconAssessment() {
   const start = useCallback(async () => {
     setLoadError(null);
     try {
-      const qs = await fetchQuestions();
-      setQuestions(qs);
       setSectionIdx(0);
       setAnswers({});
       setPhase("questions");

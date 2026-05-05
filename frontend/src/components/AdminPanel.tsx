@@ -7,9 +7,9 @@ import {
   adminFetchSubmissions,
   adminFetchSummary,
   adminLogin,
-  fetchQuestions,
 } from "@/lib/api";
 import { bandTheme } from "@/lib/bandTheme";
+import { QUESTION_BANK } from "@/lib/questionBank";
 
 const TOKEN_KEY = "beacon_ind_admin_jwt";
 
@@ -61,15 +61,14 @@ export default function AdminPanel() {
   const loadDashboard = useCallback(async (t: string) => {
     setLoading(true);
     try {
-      const [sum, subPage, qs] = await Promise.all([
+      const [sum, subPage] = await Promise.all([
         adminFetchSummary(t),
         adminFetchSubmissions(t, 1, 50),
-        fetchQuestions(),
       ]);
       setSummary(sum);
       setSubs({ total: subPage.total, items: subPage.items });
       setPage(1);
-      setQuestions(qs);
+      setQuestions(QUESTION_BANK);
     } finally {
       setLoading(false);
     }

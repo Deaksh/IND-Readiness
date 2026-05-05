@@ -57,28 +57,6 @@ function baseUrl(): string {
   );
 }
 
-export async function fetchQuestions(): Promise<Question[]> {
-  const url = `${baseUrl()}/api/questions`;
-  let res: Response;
-  try {
-    res = await fetch(url, { cache: "no-store" });
-  } catch (e) {
-    const hint =
-      typeof window !== "undefined"
-        ? ` Is the API running on ${baseUrl()}? (Set NEXT_PUBLIC_API_URL if it uses another host/port.)`
-        : "";
-    throw new Error(
-      `Could not reach the assessment API at ${url}.${hint}${e instanceof Error ? ` (${e.message})` : ""}`,
-    );
-  }
-  if (!res.ok) {
-    throw new Error(
-      `Could not load assessment questions (${res.status}). Check API at ${baseUrl()}.`,
-    );
-  }
-  return res.json();
-}
-
 export async function submitAssessment(
   email: string | undefined,
   answers: Record<string, string>,
