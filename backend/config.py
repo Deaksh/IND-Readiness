@@ -18,7 +18,10 @@ def get_settings() -> dict[str, Any]:
         "admin_jwt_secret": (os.getenv("ADMIN_JWT_SECRET") or "").strip() or None,
         # Email — Brevo (HTTPS API)
         "brevo_api_key": (os.getenv("BREVO_API_KEY") or os.getenv("SENDINBLUE_API_KEY") or "").strip() or None,
-        "email_from": (os.getenv("EMAIL_FROM") or "").strip() or None,
+        # Prefer EMAIL_FROM; many SMTP setups (e.g. Brevo relay docs) use SMTP_FROM only.
+        "email_from": (
+            (os.getenv("EMAIL_FROM") or os.getenv("SMTP_FROM") or "").strip() or None
+        ),
         "email_from_name": (os.getenv("EMAIL_FROM_NAME") or "Beacon IND Readiness").strip(),
         # Resend alternative
         "resend_api_key": (os.getenv("RESEND_API_KEY") or "").strip() or None,
