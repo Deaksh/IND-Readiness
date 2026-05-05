@@ -403,11 +403,14 @@ export default function BeaconAssessment() {
                   {result.email_delivery_detail}
                 </pre>
                 <p className="mt-2 text-xs text-amber-800">
-                  For SMTP: set <code className="rounded bg-amber-100/80 px-1">EMAIL_PROVIDER=smtp</code>
-                  , confirm <code className="rounded bg-amber-100/80 px-1">EMAIL_FROM</code> matches your
-                  mailbox, use port <strong>465</strong> with{" "}
-                  <code className="rounded bg-amber-100/80 px-1">SMTP_USE_SSL=1</code> or port{" "}
-                  <strong>587</strong> with STARTTLS, then restart the API.
+                  <strong>Brevo SMTP:</strong> <code className="rounded bg-amber-100/80 px-1">SMTP_USER</code>{" "}
+                  = your Brevo login email;{" "}
+                  <code className="rounded bg-amber-100/80 px-1">SMTP_PASSWORD</code> = SMTP key from Brevo
+                  (Settings → SMTP &amp; API), not your Gmail password. Verified sender must match{" "}
+                  <code className="rounded bg-amber-100/80 px-1">EMAIL_FROM</code> /{" "}
+                  <code className="rounded bg-amber-100/80 px-1">SMTP_FROM</code>. On Render free tier,
+                  outbound SMTP is often blocked — use <code className="rounded bg-amber-100/80 px-1">BREVO_API_KEY</code>{" "}
+                  instead.
                 </p>
               </div>
             )}

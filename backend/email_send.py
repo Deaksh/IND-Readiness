@@ -177,14 +177,37 @@ def _send_smtp(
     msg["To"] = to
     msg.set_content(html, subtype="html", charset="utf-8")
 
+    def _login_and_send(sock: smtplib.SMTP | smtplib.SMTP_SSL) -> None:
+        try:
+            sock.login(user, password)
+        except smtplib.SMTPAuthenticationError as e:
+            hint = _smtp_auth_hint(host, e)
+            raise RuntimeError(hint) from e
+
     if use_ssl:
         with smtplib.SMTP_SSL(host, port, timeout=45) as server:
-            server.login(user, password)
+            _login_and_send(server)
             server.send_message(msg)
     else:
         with smtplib.SMTP(host, port, timeout=45) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
-            server.login(user, password)
+            _login_and_send(server)
             server.send_message(msg)
+
+
+def _smtp_auth_hint(host: str, err: smtplib.SMTPAuthenticationError) -> str:
+    base = f"SMTP authentication failed: {err!s}."
+    h = host.lower()
+    if "brevo" in h or "sendinblue" in h:
+        return (
+            f"{base} For Brevo relay (smtp-relay.brevo.com): SMTP_USER must be the email "
+            "you use to log in to Brevo (your Brevo account email), and SMTP_PASSWORD must be "
+            "the SMTP key from Brevo → Settings → SMTP & API → generate/copy key — "
+            "not your Gmail password. Sender (EMAIL_FROM / SMTP_FROM) must be a domain/email "
+            "you have verified under Senders in Brevo."
+        )
+    return (
+        f"{base} Check SMTP_USER / SMTP_PASSWORD, and that the From address is allowed by your provider."
+    )
