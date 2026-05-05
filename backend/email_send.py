@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+from dataclasses import dataclass
+from email.message import EmailMessage
 from typing import Any
 
 import httpx
@@ -17,28 +17,92 @@ logger = logging.getLogger(__name__)
 USER_AGENT = "BeaconIND-Readiness/1.0"
 
 
-def send_assessment_report_email(to_email: str, subject: str, html_body: str) -> None:
+@dataclass
+class EmailSendResult:
+    status: str  # sent | skipped_no_from | skipped_no_provider | failed
+    detail: str | None = None
+
+
+def send_assessment_report_email(
+    to_email: str, subject: str, html_body: str
+) -> EmailSendResult:
     settings = get_settings()
     from_addr = settings["email_from"]
     from_name = settings["email_from_name"] or "Beacon"
 
     if not from_addr:
         logger.warning("EMAIL_FROM not set; skipping send to %s", to_email)
-        return
-
-    if settings["brevo_api_key"]:
-        _send_brevo(settings["brevo_api_key"], from_addr, from_name, to_email, subject, html_body)
-        return
-    if settings["resend_api_key"]:
-        _send_resend(
-            settings["resend_api_key"], from_addr, from_name, to_email, subject, html_body
+        return EmailSendResult(
+            "skipped_no_from",
+            "Set EMAIL_FROM in backend/.env to the sender address your provider allows.",
         )
-        return
-    if settings["smtp_host"] and settings["smtp_user"] and settings["smtp_password"]:
-        _send_smtp(settings, from_addr, to_email, subject, html_body)
-        return
 
-    logger.warning("No email provider configured (BREVO_API_KEY, RESEND_API_KEY, or SMTP_*); skip send")
+    provider = settings["email_provider"] or "auto"
+    brevo_key = settings["brevo_api_key"]
+    resend_key = settings["resend_api_key"]
+    smtp_ready = bool(
+        settings["smtp_host"] and settings["smtp_user"] and settings["smtp_password"]
+    )
+
+    def try_brevo() -> None:
+        if not brevo_key:
+            raise RuntimeError("Brevo API key not configured")
+        _send_brevo(brevo_key, from_addr, from_name, to_email, subject, html_body)
+
+    def try_resend() -> None:
+        if not resend_key:
+            raise RuntimeError("Resend API key not configured")
+        _send_resend(resend_key, from_addr, from_name, to_email, subject, html_body)
+
+    def try_smtp() -> None:
+        if not smtp_ready:
+            raise RuntimeError("SMTP not fully configured")
+        _send_smtp(settings, from_addr, to_email, subject, html_body)
+
+    attempts: list[tuple[str, Any]] = []
+
+    if provider == "smtp":
+        attempts = [("smtp", try_smtp)]
+    elif provider == "brevo":
+        attempts = [("brevo", try_brevo)]
+    elif provider == "resend":
+        attempts = [("resend", try_resend)]
+    else:
+        # auto: HTTP APIs first (legacy), then SMTP — or SMTP first if you only use SMTP
+        # Prefer SMTP when explicitly configured and no API keys, else API-first.
+        if smtp_ready and not brevo_key and not resend_key:
+            attempts = [("smtp", try_smtp)]
+        else:
+            if brevo_key:
+                attempts.append(("brevo", try_brevo))
+            if resend_key:
+                attempts.append(("resend", try_resend))
+            if smtp_ready:
+                attempts.append(("smtp", try_smtp))
+
+    if not attempts:
+        logger.warning("No email provider configured; skip send to %s", to_email)
+        return EmailSendResult(
+            "skipped_no_provider",
+            "Configure BREVO_API_KEY, RESEND_API_KEY, or SMTP_* (and EMAIL_FROM), "
+            "or set EMAIL_PROVIDER=smtp with full SMTP_*.",
+        )
+
+    last_err: str | None = None
+    for name, fn in attempts:
+        try:
+            fn()
+            logger.info("Assessment report email sent via %s to %s", name, to_email)
+            return EmailSendResult("sent", name)
+        except Exception as e:
+            last_err = f"{name}: {e}"
+            logger.warning("Email via %s failed: %s", name, e)
+
+    return EmailSendResult(
+        "failed",
+        last_err or "All configured providers failed. Check SMTP_USE_SSL/port 465 vs 587, "
+        "firewall, and that EMAIL_FROM matches your mailbox.",
+    )
 
 
 def _send_brevo(
@@ -66,7 +130,6 @@ def _send_brevo(
             json=payload,
         )
         r.raise_for_status()
-    logger.info("Brevo email sent to %s", to)
 
 
 def _send_resend(
@@ -93,27 +156,35 @@ def _send_resend(
             json=payload,
         )
         r.raise_for_status()
-    logger.info("Resend email sent to %s", to)
 
 
 def _send_smtp(
-    settings: dict[str, str | None],
+    settings: dict[str, Any],
     from_email: str,
     to: str,
     subject: str,
     html: str,
 ) -> None:
-    host = settings["smtp_host"]
+    host = str(settings["smtp_host"])
     port = int(settings["smtp_port"] or "587")
-    user = settings["smtp_user"]
-    password = settings["smtp_password"]
-    msg = MIMEMultipart("alternative")
+    user = str(settings["smtp_user"])
+    password = str(settings["smtp_password"])
+    use_ssl = bool(settings.get("smtp_use_ssl")) or port == 465
+
+    msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = from_email
     msg["To"] = to
-    msg.attach(MIMEText(html, "html", "utf-8"))
-    with smtplib.SMTP(host, port, timeout=30) as server:
-        server.starttls()
-        server.login(str(user), str(password))
-        server.sendmail(from_email, [to], msg.as_string())
-    logger.info("SMTP email sent to %s", to)
+    msg.set_content(html, subtype="html", charset="utf-8")
+
+    if use_ssl:
+        with smtplib.SMTP_SSL(host, port, timeout=45) as server:
+            server.login(user, password)
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(host, port, timeout=45) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(user, password)
+            server.send_message(msg)

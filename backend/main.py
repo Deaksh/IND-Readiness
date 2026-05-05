@@ -106,6 +106,8 @@ class AssessmentResponse(BaseModel):
     recommended_steps: list[str]
     calendly_url: str
     submission_id: str | None = None
+    email_delivery: str | None = None
+    email_delivery_detail: str | None = None
 
 
 def _validate_answers(body: AssessmentRequest) -> None:
@@ -203,21 +205,23 @@ def assess(body: AssessmentRequest) -> AssessmentResponse:
     finally:
         db.close()
 
+    email_delivery: str | None = None
+    email_delivery_detail: str | None = None
     if body.email and body.consent:
-        if body.email:
-            logger.info("Assessment submission email=%s id=%s", body.email, sid)
+        logger.info("Assessment submission email=%s id=%s", body.email, sid)
         labeled = label_answers(body.answers)
         risk = compute_risk_snapshot(body.answers, report)
         html_body = build_report_html(labeled, report, risk)
         pct = report["percentage"]
-        try:
-            send_assessment_report_email(
-                str(body.email),
-                f"Your IND readiness report — {pct:.0f}%",
-                html_body,
-            )
-        except Exception as e:
-            logger.exception("Failed to send report email: %s", e)
+        er = send_assessment_report_email(
+            str(body.email),
+            f"Your IND readiness report — {pct:.0f}%",
+            html_body,
+        )
+        email_delivery = er.status
+        email_delivery_detail = er.detail
+        if er.status == "failed":
+            logger.error("Report email not delivered: %s", er.detail)
 
     return AssessmentResponse(
         percentage=report["percentage"],
@@ -230,4 +234,6 @@ def assess(body: AssessmentRequest) -> AssessmentResponse:
         recommended_steps=report["recommended_steps"],
         calendly_url=report["calendly_url"],
         submission_id=sid,
+        email_delivery=email_delivery,
+        email_delivery_detail=email_delivery_detail,
     )

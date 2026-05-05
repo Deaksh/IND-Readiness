@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from typing import Any
 
 
 @lru_cache
-def get_settings() -> dict[str, str | None]:
+def get_settings() -> dict[str, Any]:
     """Return settings dict; values may be None if unset."""
     return {
         "database_url": os.getenv("DATABASE_URL", "sqlite:///./submissions.db"),
@@ -21,11 +22,15 @@ def get_settings() -> dict[str, str | None]:
         "email_from_name": (os.getenv("EMAIL_FROM_NAME") or "Beacon IND Readiness").strip(),
         # Resend alternative
         "resend_api_key": (os.getenv("RESEND_API_KEY") or "").strip() or None,
-        # SMTP fallback (optional)
+        # SMTP (optional)
         "smtp_host": (os.getenv("SMTP_HOST") or "").strip() or None,
         "smtp_port": os.getenv("SMTP_PORT", "587"),
         "smtp_user": (os.getenv("SMTP_USER") or "").strip() or None,
         "smtp_password": (os.getenv("SMTP_PASSWORD") or "").strip() or None,
+        "smtp_use_ssl": (os.getenv("SMTP_USE_SSL") or "").strip().lower()
+        in ("1", "true", "yes"),
+        # auto | smtp | brevo | resend — use smtp if Brevo/Resend keys exist but you want SMTP
+        "email_provider": (os.getenv("EMAIL_PROVIDER") or "auto").strip().lower(),
     }
 
 

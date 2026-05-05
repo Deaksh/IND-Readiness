@@ -24,6 +24,9 @@ export type AssessResponse = {
   recommended_steps: string[];
   calendly_url: string;
   submission_id?: string | null;
+  /** sent | skipped_no_from | skipped_no_provider | failed — only set when email+consent */
+  email_delivery?: string | null;
+  email_delivery_detail?: string | null;
 };
 
 export type SubmitOpts = {

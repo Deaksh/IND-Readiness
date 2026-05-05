@@ -377,6 +377,40 @@ export default function BeaconAssessment() {
 
       {phase === "results" && result && (
         <div className="space-y-8">
+          {result.email_delivery === "sent" && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                A copy of this report was sent to your inbox (
+                {result.email_delivery_detail || "email"}).
+              </div>
+            )}
+          {result.email_delivery &&
+            result.email_delivery !== "sent" &&
+            result.email_delivery_detail && (
+              <div
+                className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                role="status"
+              >
+                <p className="font-medium">Email copy</p>
+                <p className="mt-1 text-amber-900/90">
+                  {result.email_delivery === "skipped_no_from" &&
+                    "We could not send the HTML report because EMAIL_FROM is not set on the server."}
+                  {result.email_delivery === "skipped_no_provider" &&
+                    "No working email provider is configured on the server."}
+                  {result.email_delivery === "failed" &&
+                    "The server tried to send your report but delivery failed. Details below."}
+                </p>
+                <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-white/80 p-2 text-xs text-slate-800">
+                  {result.email_delivery_detail}
+                </pre>
+                <p className="mt-2 text-xs text-amber-800">
+                  For SMTP: set <code className="rounded bg-amber-100/80 px-1">EMAIL_PROVIDER=smtp</code>
+                  , confirm <code className="rounded bg-amber-100/80 px-1">EMAIL_FROM</code> matches your
+                  mailbox, use port <strong>465</strong> with{" "}
+                  <code className="rounded bg-amber-100/80 px-1">SMTP_USE_SSL=1</code> or port{" "}
+                  <strong>587</strong> with STARTTLS, then restart the API.
+                </p>
+              </div>
+            )}
           <div
             className={`rounded-2xl border bg-white/95 p-8 shadow-[var(--beacon-shadow)] ring-1 ${bandTheme(result.band).ring}`}
           >
