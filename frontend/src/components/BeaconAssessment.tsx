@@ -8,7 +8,7 @@ import { QUESTION_BANK } from "@/lib/questionBank";
 
 type Phase = "intro" | "questions" | "email" | "results";
 
-const BEACON_WEBSITE = "https://beacon-bio.carrd.co";
+const BEACON_WEBSITE = "https://www.beaconone.net/biopharma";
 const EARLY_ACCESS_WAITLIST_URL =
   "https://docs.google.com/forms/d/e/1FAIpQLSeKtKgRz6EKmOEewGL5NIbCmDiHrM0T47xekYDzx_1ouLWg7w/viewform";
 
