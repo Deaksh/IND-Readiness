@@ -11,12 +11,12 @@ export default function Home() {
       <footer className="border-t border-[var(--beacon-border)] bg-white/60 px-4 py-6 text-center text-xs leading-relaxed text-[var(--beacon-muted)] backdrop-blur-sm">
         <p>
           <a
-            href="https://beacon-bio.carrd.co"
+            href="https://www.beaconone.net/biopharma"
             target="_blank"
             rel="noopener noreferrer"
             className="font-medium text-[var(--beacon-accent)] underline-offset-4 hover:underline"
           >
-            beacon-bio.carrd.co
+            www.beaconone.net/biopharma
           </a>
         </p>
         <p className="mt-2">
